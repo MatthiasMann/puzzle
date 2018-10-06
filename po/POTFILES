@@ -1,0 +1,7 @@
+data/org.gnome.Puzzle.desktop.in
+data/org.gnome.Puzzle.appdata.xml.in
+data/org.gnome.Puzzle.gschema.xml
+src/window.ui
+src/main.vala
+src/window.vala
+
