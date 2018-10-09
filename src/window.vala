@@ -148,8 +148,8 @@ namespace puzzle {
             img_size.show();
             preview.show();
 
-            var chooser = new Gtk.FileChooserDialog (
-                "Select your favorite file",
+            var chooser = new Gtk.FileChooserDialog(
+                "Select an image or animation to saw up",
                 this, Gtk.FileChooserAction.OPEN,
                 "_Cancel", Gtk.ResponseType.CANCEL,
                 "_Open", Gtk.ResponseType.ACCEPT);

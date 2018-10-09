@@ -112,25 +112,42 @@ namespace puzzle {
                 p.render_outline(ctx);
         }
 
-        public Part? getPart(Vec2 pos, bool move_to_top=true) {
+        public Part? getPart(Vec2 pos) {
             for(int idx=parts.length ; idx-->0 ;) {
-                if(parts[idx].isInside(pos)) {
-                    var part = parts[idx];
-                    if(move_to_top && idx != parts.length - 1)
-                        move_and_add(idx, part);
-                    return part;
-                }
+                if(parts[idx].isInside(pos))
+                    return parts[idx];
             }
             return null;
         }
 
+        public Part[] getParts(Extend e) {
+            Part[] res = {};
+            for(int idx=parts.length ; idx-->0 ;) {
+                if(parts[idx].isInsideExtend(e))
+                    res += parts[idx];
+            }
+            return res;
+        }
+
+        public void movePartsToTop(Part[] selected_parts) {
+            for(int idx=0,end=parts.length ; idx<end ;) {
+                var part = parts[idx];
+                if(part in selected_parts) {
+                    remove_at_and_add(idx, part);
+                    end--; // part is now at the end of the array - so need to check it again
+                    // a new part is now at idx - so check that idx again
+                } else
+                    idx++;
+            }
+        }
+
         public int checkMerge(Part part) {
             int count = 0;
-            checkMerge_impl(part, part, &count);
+            checkMerge_impl(part, part, ref count);
             return count;
         }
 
-        public void checkMerge_impl(Part part, Part org_part, int* count) {
+        public void checkMerge_impl(Part part, Part org_part, ref int count) {
             int part_idx = -1;
             for(int idx=parts.length ; idx-->0 ;) {
                 if(parts[idx] == part)
@@ -149,14 +166,14 @@ namespace puzzle {
                                 }
                             }
                             assert(part_idx >= 0);
-                            move_and_add(part_idx, new_part);
+                            remove_at_and_add(part_idx, new_part);
                         } else {
                             remove_at(part_idx);
-                            move_and_add(idx, new_part);
+                            remove_at_and_add(idx, new_part);
                         }
-                        *count = *count + 1;
-                        if(*count < 10)
-                            checkMerge_impl(new_part, org_part, count);
+                        count++;
+                        if(count < 10)
+                            checkMerge_impl(new_part, org_part, ref count);
                         return;
                     }
                 }
@@ -167,19 +184,22 @@ namespace puzzle {
             requires(idx >= 0 && idx < parts.length)
         {
             var new_len = parts.length - 1;
+            parts[idx] = null; // array.move() does not unref() objects
             parts.move(idx+1, idx, new_len - idx);
-            parts.resize(new_len);
+            parts.length = new_len;
         }
 
-        private void move_and_add(int idx, Part new_part)
+        private void remove_at_and_add(int idx, owned Part new_part)
             requires(idx >= 0 && idx < parts.length)
         {
-            parts.move(idx+1, idx, parts.length - 1 - idx);
-            parts[parts.length - 1] = new_part;
+            var new_len = parts.length - 1;
+            parts[idx] = null; // array.move() does not unref() objects
+            parts.move(idx+1, idx, new_len - idx);
+            parts[new_len] = new_part;
         }
 
         public Extend get_extend() {
-            var e = Extend.empty();
+            var e = Extend.zero();
             foreach(var part in parts)
                 e.update_extend(part.get_extend());
             return e;
@@ -240,6 +260,8 @@ namespace puzzle {
             requires(width > 0)
             requires(height > 0)
         {
+            dragParts = null;
+            selectedParts = null;
             p = new Puzzle(UVec2((uint)width, (uint)height), num_tiles);
             set_size_request(width+20, height+20);
             update_scrollable_area();
@@ -271,15 +293,27 @@ namespace puzzle {
             var timer = new Timer ();
             ctx.set_source_rgb(0.1, 0.1, 1.0);
             ctx.paint();
+            ctx.translate(-hScrollPos, -vScrollPos);
 
             if(p != null) {
-                ctx.translate(-hScrollPos, -vScrollPos);
                 if(image != null)
                     p.render(ctx, image, anim == null);
                 if(_render_outline) {
                     ctx.set_source_rgb(1.0, 0.0, 0.0);
                     p.render_outlines(ctx);
                 }
+                if(selectedParts != null && selectedParts.length > 0) {
+                    ctx.set_source_rgb(0.0, 1.0, 0.0);
+                    foreach(var part in selectedParts)
+                        part.render_outline(ctx);
+                }
+            }
+
+            if(!selection.empty) {
+                var size = selection.size();
+                ctx.set_source_rgb(0.0, 1.0, 1.0);
+                ctx.rectangle(selection.min.x, selection.min.y, size.x, size.y);
+                ctx.stroke();
             }
 
             timer.stop();
@@ -303,31 +337,69 @@ namespace puzzle {
             get { return (vadjust != null) ? Math.round(vadjust.value) : 0; }
         }
 
-        private Part dragPart;
-        private Vec2 dragStart;
-
-        private void on_drag_begin(Gtk.GestureDrag g, double x, double y) {
-            if(p != null) {
-                dragPart = p.getPart(Vec2(x + hScrollPos, y + vScrollPos));
-                if(dragPart != null)
-                    dragStart = dragPart.pos;
-            }
+        private Part[] dragParts;
+        private Vec2[] dragStart;
+        private Vec2 selectionStart;
+        private Extend _selection;
+        private Extend selection {
+            set { _selection = value; queue_draw(); }
+            get { return _selection; }
         }
+        private Part[] selectedParts;
 
-        private void on_drag_update(Gtk.GestureDrag g, double x, double y) {
-            if(dragPart != null) {
-                dragPart.pos = Vec2(x, y).add(dragStart);
+        private void setSelectedParts(owned Part[]? value) {
+            if(selectedParts != value) {
+                selectedParts = value;
                 queue_draw();
             }
         }
 
+        private void on_drag_begin(Gtk.GestureDrag g, double x, double y) {
+            selectionStart = Vec2(x + hScrollPos, y + vScrollPos);
+            if(p != null) {
+                var part = p.getPart(selectionStart);
+                if(part != null) {
+                    if(selectedParts != null && part in selectedParts)
+                        dragParts = selectedParts;
+                    else {
+                        dragParts = { part };
+                        setSelectedParts(null);
+                    }
+                    p.movePartsToTop(dragParts);
+                    dragStart = new Vec2[dragParts.length];
+                    for(int idx=0 ; idx<dragParts.length ; idx++)
+                        dragStart[idx] = dragParts[idx].pos;
+                    return;
+                }
+            }
+            setSelectedParts(null);
+        }
+
+        private void on_drag_update(Gtk.GestureDrag g, double x, double y) {
+            if(dragParts != null) {
+                assert(dragParts.length == dragStart.length);
+                for(int idx=0 ; idx<dragParts.length ; idx++)
+                    dragParts[idx].pos = Vec2(x, y).add(dragStart[idx]);
+                queue_draw();
+            } else {
+                selection = Extend.points(selectionStart, selectionStart.add(Vec2(x, y)));
+                if(p != null)
+                    setSelectedParts(p.getParts(selection));
+            }
+        }
+
         private void on_drag_end(Gtk.GestureDrag g, double x, double y) {
-            if(p != null && dragPart != null) {
-                if(p.checkMerge(dragPart) > 0)
+            if(p != null && dragParts != null && dragParts.length == 1) {   // only merge a single piece
+                if(p.checkMerge(dragParts[0]) > 0)
                     queue_draw();
                 update_scrollable_area(false);
             }
-            dragPart = null;
+            dragParts = null;
+            dragStart = null;
+            if(!selection.empty) {
+                selection = Extend.zero();
+                queue_draw();
+            }
         }
 
         private Gtk.Adjustment hadjust;
@@ -360,7 +432,7 @@ namespace puzzle {
         public bool get_border (out Gtk.Border border) { border = Gtk.Border(); return false; }
 
         private void update_scrollable_area(bool allow_shrinking = true) {
-            var e = (p != null) ? p.get_extend() : Extend.empty();
+            var e = (p != null) ? p.get_extend() : Extend.zero();
             if(hadjust != null) {
                 hadjust.lower = compute_lower(hadjust.value, e.min.x - 10.0, allow_shrinking);
                 hadjust.upper = e.max.x + 10.0;

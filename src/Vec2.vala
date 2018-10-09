@@ -64,13 +64,19 @@ namespace puzzle {
         public Vec2 min;
         public Vec2 max;
         
-        public Extend.empty() {
+        public Extend.zero() {
             this.min = Vec2.zero();
             this.max = Vec2.zero();
         }
         public Extend.point(Vec2 p) {
             this.min = p;
             this.max = p;
+        }
+        public Extend.points(Vec2 a, Vec2 b) {
+            this.min.x = double.min(a.x, b.x);
+            this.min.y = double.min(a.y, b.y);
+            this.max.x = double.max(a.x, b.x);
+            this.max.y = double.max(a.y, b.y);
         }
         public Extend.point_and_size(Vec2 p, Vec2 size)
             requires(size.x >= 0)
@@ -89,5 +95,12 @@ namespace puzzle {
         }
         
         public Vec2 size() { return max.sub(min); }
+
+        public bool empty { get { return max.x <= min.x && max.y <= min.y; }}
+
+        public bool isInside(Extend other) {
+            return min.x >= other.min.x && max.x <= other.max.x &&
+                   min.y >= other.min.y && max.y <= other.max.y;
+        }
     }
 }

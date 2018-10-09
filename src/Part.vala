@@ -96,8 +96,8 @@ namespace puzzle {
             stdout.printf("/ *length=%u* /}\n", vl.length);
             */
 
-            // start with empty so that e.min <= Vec2(0,0)
-            var e = Extend.empty();
+            // start with zero so that e.min <= Vec2(0,0)
+            var e = Extend.zero();
             foreach(var v in vl)
                 e.update(v);
             var size = e.size();
@@ -188,6 +188,10 @@ namespace puzzle {
             var val = mask.get_data()[y*stride + x];
             //stdout.printf("x=%ld y=%ld stride=%u width=%u -> %d\n", x, y, stride, width, val);
             return val > 0;
+        }
+
+        public bool isInsideExtend(Extend e) {
+            return get_extend().isInside(e);
         }
 
         public Extend get_extend() {
