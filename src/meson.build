@@ -4,6 +4,7 @@ puzzle_sources = [
   'Vec2.vala',
   'Part.vala',
   'Puzzle.vala',
+  'scale_half.c'
 ]
 
 cc = meson.get_compiler('c')
@@ -23,6 +24,7 @@ puzzle_sources += gnome.compile_resources('puzzle-resources',
 )
 
 executable('puzzle', puzzle_sources,
-  vala_args: '--target-glib=2.50',  dependencies: puzzle_deps,
+  vala_args: '--target-glib=2.50', dependencies: puzzle_deps,
+  c_args: ['-msse4.1', '-O2', '-g'],
   install: true,
 )

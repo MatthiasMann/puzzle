@@ -1,14 +1,4 @@
 namespace puzzle {
-    public struct Corner {
-        public Vec2 pos;
-        public uint id;
-
-        public Corner(Vec2 pos, uint id) {
-            this.pos = pos;
-            this.id = id;
-        }
-    }
-
     public struct Edge {
         public float pin;
         public bool left;
@@ -40,7 +30,7 @@ namespace puzzle {
     public class Part {
         public Vec2 pos;
         private Grid grid;
-        private Corner[] corners;
+        private uint[] corners;
         private Cairo.ImageSurface mask;
         private Cairo.ImageSurface cache;
         private Vec2 img_pos;
@@ -54,22 +44,22 @@ namespace puzzle {
         public int width { get { return mask.get_width(); } }
         public int height { get { return mask.get_height(); } }
 
-        public Part(Grid _grid, owned Corner[] _corners) {
+        public Part(Grid _grid, owned uint[] _corners) {
             this.grid = _grid;
             this.corners = _corners;
             
-            img_pos = corners[0].pos;
+            img_pos = grid.getPos(corners[0]);
             for(uint idx=1 ; idx<corners.length ; idx++)
-                img_pos = img_pos.min(corners[idx].pos);
+                img_pos = img_pos.min(grid.getPos(corners[idx]));
             
             vl = {};
             var s = corners[corners.length - 1];
+            var spos = grid.getPos(s).sub(img_pos);
             foreach(var c in corners) {
-                var spos = s.pos.sub(img_pos);
                 vl += spos;
                 
-                var epos = c.pos.sub(img_pos);
-                var edge = grid.getEdge(s.id, c.id);
+                var epos = grid.getPos(c).sub(img_pos);
+                var edge = grid.getEdge(s, c);
                 if(edge.pin > 0) {
                     var d = epos.sub(spos);
 
@@ -87,6 +77,7 @@ namespace puzzle {
                 }
                 
                 s = c;
+                spos = epos;
             }
             
             /*
@@ -117,6 +108,12 @@ namespace puzzle {
             }
             
             mask.flush();
+        }
+
+        public Part recreate(double pos_scale) {
+            var p = new Part(grid, corners);
+            p.pos = pos.mul(pos_scale);
+            return p;
         }
 
         public void update_cache(Cairo.Surface image) {
@@ -165,7 +162,7 @@ namespace puzzle {
             ctx.set_source_surface(image, -img_pos.x, -img_pos.y);
             ctx.mask_surface(mask, 0, 0);
         }
-
+/*
         private void render_corner_ids(Cairo.Context ctx) {
             var layout = Pango.cairo_create_layout(ctx);
             ctx.set_source_rgb(0, 0, 0);
@@ -177,7 +174,7 @@ namespace puzzle {
                 ctx.restore();
             }
         }
-
+*/
         public bool isInside(Vec2 mouse) {
             mouse = mouse.sub(pos);
             var x = Math.lrint(mouse.x);
@@ -221,9 +218,9 @@ namespace puzzle {
             for(uint idx0=0 ; idx0<this.corners.length ; idx0++) {
                 var e0 = this.corners[idx0];
                 for(uint idx1=0 ; idx1<other.corners.length ; idx1++) {
-                    if(other.corners[idx1].id == e0.id &&
-                        other.corners[other.inc_corner_idx(idx1)].id == this.corners[this.dec_corner_idx(idx0)].id &&
-                        other.corners[idx1].pos.sub(other_off).distSqr(e0.pos.sub(own_off)) < 100.0)
+                    if(other.corners[idx1] == e0 &&
+                        other.corners[other.inc_corner_idx(idx1)] == this.corners[this.dec_corner_idx(idx0)] &&
+                        other_off.distSqr(own_off) < 100.0)
                         return new MergePoint(idx0, idx1);
                 }
             }
@@ -249,7 +246,7 @@ namespace puzzle {
             for(uint off=1 ; off<other_len ; off++) {
                 uint other_idx = other.inc_corner_idx(other_end_idx);
                 uint own_idx = this.dec_corner_idx(own_start_idx);
-                if(this.corners[own_idx].id != other.corners[other_idx].id)
+                if(this.corners[own_idx] != other.corners[other_idx])
                     break;
                 count++;
                 other_end_idx = other_idx;
@@ -259,7 +256,7 @@ namespace puzzle {
             for(uint off=1 ; off<other_len ; off++) {
                 uint other_idx = other.dec_corner_idx(other_start_idx);
                 uint own_idx = this.inc_corner_idx(own_end_idx);
-                if(this.corners[own_idx].id != other.corners[other_idx].id)
+                if(this.corners[own_idx] != other.corners[other_idx])
                     break;
                 count++;
                 other_start_idx = other_idx;
@@ -280,7 +277,7 @@ namespace puzzle {
                 return other.merge_impl(this, start.swap(), true);
             }
 
-            Corner[] new_corners = {};
+            uint[] new_corners = {};
             do{
                 new_corners += this.corners[own_end_idx];
                 own_end_idx = this.inc_corner_idx(own_end_idx);
@@ -294,7 +291,7 @@ namespace puzzle {
                     new_corners += other.corners[other_end_idx];
                 } while(other_start_idx != other_end_idx);
             } else {
-                if(this.corners[own_end_idx].id != new_corners[0].id)
+                if(this.corners[own_end_idx] != new_corners[0])
                     new_corners += this.corners[own_end_idx];
 
                 new_corners = cleanup_corners(new_corners);
@@ -322,10 +319,10 @@ namespace puzzle {
             return idx - 1;
         }
 
-        private static Corner[] cleanup_corners(owned Corner[] corners) {
+        private static uint[] cleanup_corners(owned uint[] corners) {
             int len = corners.length;
             for(int idx=0 ; idx<len ; idx++) {
-                while(corners[idx].id == corners[(idx+2)%len].id) {
+                while(corners[idx] == corners[(idx+2)%len]) {
                     var idx2 = (idx+2)%len;
                     stdout.printf("Removing from %d to %d: ", idx, idx2);
                     dump_corner_ids(corners);
@@ -340,10 +337,10 @@ namespace puzzle {
             return corners;
         }
 
-        private static void dump_corner_ids(Corner[] corners) {
+        private static void dump_corner_ids(uint[] corners) {
             stdout.printf("id={");
             foreach(var e in corners)
-                stdout.printf("%u,", e.id);
+                stdout.printf("%u,", e);
             stdout.printf("}\n");
         }
     }

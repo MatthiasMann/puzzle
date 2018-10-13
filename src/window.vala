@@ -55,9 +55,65 @@ namespace puzzle {
             filemenu.add(item_exit);
 
             pa = new PuzzleArea();
+            pa.preparePreview = show_preview;
             var scroll = new Gtk.ScrolledWindow(null, null);
             scroll.add(pa);
             box.pack_start(scroll, true, true, 0);
+        }
+
+        private Gtk.Window preview_dialog;
+        private Gtk.Image preview_image;
+
+        private void show_preview(Gdk.Pixbuf pixbuf) {
+            var size = compute_thumbnail_size(pixbuf.width, pixbuf.height, 128);
+            var thumbnail = pixbuf.scale_simple(size.width, size.height, Gdk.InterpType.HYPER);
+            if(thumbnail != null) {
+                if(preview_dialog == null) {
+                    preview_image = new Gtk.Image();
+                    preview_dialog = new Gtk.Window();
+                    preview_dialog.accept_focus = false;
+                    preview_dialog.deletable = false;
+                    preview_dialog.resizable = false;
+                    preview_dialog.destroy_with_parent = true;
+                    preview_dialog.type_hint=Gdk.WindowTypeHint.MENU;
+                    preview_dialog.set_title("Preview");
+                    preview_dialog.set_transient_for(this);
+                    preview_dialog.add(preview_image);
+
+                    int x, y;
+                    get_position(out x, out y);
+                    preview_dialog.move(x, y);
+                }
+
+                preview_image.pixbuf = thumbnail;
+                preview_dialog.show_all();
+            }
+        }
+
+        struct Size {
+            int width;
+            int height;
+
+            public Size(int width, int height) {
+                this.width = width;
+                this.height = height;
+            }
+        }
+
+        private Size compute_thumbnail_size(int width, int height, int image_size)
+            requires(width >= 0)
+            requires(height >= 0)
+            requires(image_size >= 0)
+        {
+            if(height > width) {
+                width = (int)Math.lrint((double)width * image_size / (double)height);
+                height = image_size;
+            } else {
+                height = (int)Math.lrint((double)height * image_size / (double)width);
+                width = image_size;
+            }
+
+            return Size(width, height);
         }
 
         private bool pixbuf_loader_loop(Gdk.PixbufLoader loader, File file) throws GLib.Error {
@@ -90,7 +146,7 @@ namespace puzzle {
                 var anim = loader.get_animation();
                 if(anim.is_static_image()) {
                     var pixbuf = loader.get_pixbuf();
-                    var tile_size = uint.max(1, uint.min(pixbuf.width, pixbuf.height) / 14);
+                    var tile_size = uint.max(50, uint.min(pixbuf.width, pixbuf.height) / 14);
                     pa.createPuzzleFromPixbuf(pixbuf, UVec2(pixbuf.width / tile_size, pixbuf.height / tile_size));
                 } else {
                     var tile_size = 50;//uint.max(1, uint.min(anim.get_width(), anim.get_height()) / 12);
@@ -115,15 +171,8 @@ namespace puzzle {
                 loader.size_prepared.connect((width,height) => {
                     result.fullsize_width = width;
                     result.fullsize_height = height;
-                    const int preview_size = 128;
-                    if(height > width) {
-                        width = (int)Math.lrint((double)width * preview_size / (double)height);
-                        height = preview_size;
-                    } else {
-                        height = (int)Math.lrint((double)height * preview_size / (double)width);
-                        width = preview_size;
-                    }
-                    loader.set_size(width, height);
+                    var size = compute_thumbnail_size(width, height, 128);
+                    loader.set_size(size.width, size.height);
                 });
                 if(pixbuf_loader_loop(loader, file)) {
                     var anim = loader.get_animation();

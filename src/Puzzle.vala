@@ -1,17 +1,23 @@
 namespace puzzle {
     public class Grid {
         public uint stride { get; private set; }
+        private Vec2[] positions;
         private float[,] pin;
         private bool[,] left;
+
+        public double scale { get; set; default = 1.0; }
 
         public Grid(UVec2 img_size, UVec2 num_tiles) {
             stride = num_tiles.x + 1;
             var grid_size = stride * (num_tiles.y+1);
+            positions = new Vec2[grid_size];
             left = new bool[2, grid_size];
             pin = new float[2, grid_size];
 
+            var tile_size = Vec2(img_size.x / (double)num_tiles.x, img_size.y / (double)num_tiles.y);
             for(uint y=0,idx=0 ; y<=num_tiles.y ; y++) {
                 for(uint x=0 ; x<=num_tiles.x ; x++,idx++) {
+                    positions[idx] = Vec2(tile_size.x * x, tile_size.y * y);
                     left[0,idx] = Random.boolean();
                     left[1,idx] = Random.boolean();
                 }
@@ -19,6 +25,7 @@ namespace puzzle {
 
             for(uint y=1 ; y<num_tiles.y ; y++) {
                 for(uint x=1,idx=y*stride+x ; x<num_tiles.x ; x++,idx++) {
+                    positions[idx] = positions[idx].add(tile_size.mul2(random_offset(), random_offset())).round();
                     pin[0,idx] = (float)(Random.next_double() * 0.4 + 0.3);
                     pin[1,idx] = (float)(Random.next_double() * 0.4 + 0.3);
                 }
@@ -28,6 +35,12 @@ namespace puzzle {
                 pin[1,x] = (float)(Random.next_double() * 0.4 + 0.3);
             for(uint y=1 ; y<num_tiles.y ; y++)
                 pin[0,y*stride] = (float)(Random.next_double() * 0.4 + 0.3);
+        }
+
+        public Vec2 getPos(uint corner)
+            requires(corner < positions.length)
+        {
+            return positions[corner].mul(scale);
         }
 
         public Edge getEdge(uint from, uint to) {
@@ -47,6 +60,11 @@ namespace puzzle {
         private float flip_pin(float pin) {
             return pin > 0 ? 1.0f - pin : 0f;
         }
+
+        private double random_offset() {
+            const double max_offset = 0.25;
+            return Random.next_double() * (2*max_offset) - max_offset;
+        }
     }
 
     public class Puzzle {
@@ -54,34 +72,19 @@ namespace puzzle {
         private Grid grid;
         private Part[] parts;
 
+        public int num_parts {
+            get { return parts.length; }
+        }
+
         public Puzzle(UVec2 img_size, UVec2 num_tiles, bool randomize = true) {
             this.img_size = img_size;
             this.grid = new Grid(img_size, num_tiles);
             this.parts = {};
             
             var stride = grid.stride;
-            var grid_size = stride * (num_tiles.y+1);
-            var positions = new Vec2[grid_size];
-
-            var tile_size = Vec2(img_size.x / (double)num_tiles.x, img_size.y / (double)num_tiles.y);
-            for(uint y=0,idx=0 ; y<=num_tiles.y ; y++) {
-                for(uint x=0 ; x<=num_tiles.x ; x++,idx++)
-                    positions[idx] = Vec2(tile_size.x * x, tile_size.y * y);
-            }
-            
-            for(uint y=1 ; y<num_tiles.y ; y++) {
-                for(uint x=1,idx=y*stride+x ; x<num_tiles.x ; x++,idx++)
-                    positions[idx] = positions[idx].add(tile_size.mul2(random_offset(), random_offset())).round();
-            }
-
             for(uint y=0 ; y<num_tiles.y ; y++) {
                 for(uint x=0,idx=y*stride ; x<num_tiles.x ; x++,idx++) {
-                    var p = new Part(grid, {
-                        Corner(positions[idx         ], idx),
-                        Corner(positions[idx+1       ], idx+1),
-                        Corner(positions[idx+stride+1], idx+stride+1),
-                        Corner(positions[idx+stride  ], idx+stride)
-                    });
+                    var p = new Part(grid, {idx, idx+1, idx+stride+1, idx+stride});
                     if(randomize) {
                         p.pos.x = Random.next_double() * (img_size.x - p.width);
                         p.pos.y = Random.next_double() * (img_size.y - p.height);
@@ -89,12 +92,19 @@ namespace puzzle {
                     parts += p;
                 }
             }
-
         }
         
-        private double random_offset() {
-            const double max_offset = 0.25;
-            return Random.next_double() * (2*max_offset) - max_offset; 
+        public double scale {
+            get { return grid.scale; }
+            set {
+                assert(value > 0);
+                if(grid.scale != value) {
+                    double pos_scale = value / grid.scale;
+                    grid.scale = value;
+                    for(uint idx=0 ; idx<parts.length ; idx++)
+                        parts[idx] = parts[idx].recreate(pos_scale);
+                }
+            }
         }
         
         public void update_cache(Cairo.Surface img) {
@@ -206,12 +216,38 @@ namespace puzzle {
         }
     }
 
+    public delegate void PreparePreview(Gdk.Pixbuf image);
+
     public class PuzzleArea : Gtk.DrawingArea, Gtk.Scrollable {
         private Gtk.GestureDrag gesture;
-        private Cairo.Surface image;
+        private Cairo.Surface[] image;
         private Puzzle p;
         private Gdk.PixbufAnimation anim;
         private Gdk.PixbufAnimationIter anim_iter;
+        private int _zoom_level;
+        private int zoom_level {
+            set {
+                if(_zoom_level != value && anim == null) {
+                    assert(image.length >= 1);
+                    while(image.length <= value) {
+                        var img = scale_half(image[image.length-1]);
+                        if(img == null)
+                            break;
+                        image += img;
+                    }
+                    _zoom_level = int.min(image.length-1, value);
+                    p.scale = 1.0 / (1 << _zoom_level);
+                    queue_draw();
+                    update_scrollable_area();
+                }
+            }
+            get { return _zoom_level; }
+        }
+
+        public PreparePreview preparePreview;
+
+        [Signal(action=true)]
+        public signal void zoom(int adjust);
 
         public PuzzleArea() {
             can_focus = true;
@@ -232,26 +268,30 @@ namespace puzzle {
                 render_outline = false;
                 return false;
             });
-        }
 
-        public void createPuzzle(Cairo.ImageSurface image, UVec2 num_tiles) {
-            this.image = image;
-            this.anim = null;
-            this.anim_iter = null;
-            doCreatePuzzle(image.get_width(), image.get_height(), num_tiles);
+            _zoom_level = 0;
+            zoom.connect(do_zoom);
+
+            unowned Gtk.BindingSet binding_set = Gtk.BindingSet.by_class (get_class ());
+            Gtk.BindingEntry.add_signal(binding_set, Gdk.Key.plus, 0, "zoom", 1, typeof(int), -1);
+            Gtk.BindingEntry.add_signal(binding_set, Gdk.Key.minus, 0, "zoom", 1, typeof(int), 1);
+            Gtk.BindingEntry.add_signal(binding_set, Gdk.Key.KP_Add, 0, "zoom", 1, typeof(int), -1);
+            Gtk.BindingEntry.add_signal(binding_set, Gdk.Key.KP_Subtract, 0, "zoom", 1, typeof(int), 1);
         }
 
         public void createPuzzleFromPixbuf(Gdk.Pixbuf pixbuf, UVec2 num_tiles) {
             this.anim = null;
             this.anim_iter = null;
-            update_image_from_pixbuf(pixbuf);
+            this.image = new Cairo.Surface[1];
+            update_image_from_pixbuf(pixbuf, true);
             doCreatePuzzle(pixbuf.width, pixbuf.height, num_tiles);
         }
 
         public void createPuzzleFromAnim(Gdk.PixbufAnimation anim, UVec2 num_tiles) {
             this.anim = anim;
             this.anim_iter = anim.get_iter(null);
-            update_image_from_pixbuf(anim_iter.get_pixbuf());
+            this.image = new Cairo.Surface[1];
+            update_image_from_pixbuf(anim_iter.get_pixbuf(), true);
             animate();
             doCreatePuzzle(anim.get_width(), anim.get_height(), num_tiles);
         }
@@ -262,15 +302,20 @@ namespace puzzle {
         {
             dragParts = null;
             selectedParts = null;
+            _zoom_level = 0;
             p = new Puzzle(UVec2((uint)width, (uint)height), num_tiles);
             set_size_request(width+20, height+20);
             update_scrollable_area();
         }
 
-        private void update_image_from_pixbuf(Gdk.Pixbuf pixbuf) {
-            image = Gdk.cairo_surface_create_from_pixbuf(pixbuf, 0, get_window());
+        private void update_image_from_pixbuf(Gdk.Pixbuf pixbuf, bool update_preview=false) {
+            if(preparePreview != null && update_preview)
+                preparePreview(pixbuf);
+            image[0] = Gdk.cairo_surface_create_from_pixbuf(pixbuf, 0, get_window());
             queue_draw();
         }
+
+        private static extern Cairo.Surface scale_half(Cairo.Surface surface);
 
         private void animate() {
             var delay = anim_iter.get_delay_time();
@@ -289,15 +334,37 @@ namespace puzzle {
             });
         }
 
+        private void do_zoom(int dir) {
+            zoom_level = int.max(0, int.min(3, zoom_level + dir));
+        }
+
         public override bool draw (Cairo.Context ctx) {
-            var timer = new Timer ();
-            ctx.set_source_rgb(0.1, 0.1, 1.0);
+            //var timer = new Timer ();
+            ctx.set_source_rgb(0.1, 0.1, 0.5);
             ctx.paint();
+
+            if(p == null) {
+                var layout = Pango.cairo_create_layout(ctx);
+                layout.set_text("Welcome to jigsaw puzzle\n\nTo get started open an image file via the file menu.\n\nControls:\n" +
+                                "Drag & drop on a part to move it. When placed close to a matching part they will connect.\n" +
+                                "Drag from an empty area to select multiple parts. These can be moved by dragging one of the selected parts.\n" +
+                                "Hold down one of the CONTROL keys to show part outlines to find parts hidden behind other parts.\n" +
+                                "(Numpad) +/- to zoom out (can't zoom in beyond 100%).\n" +
+                                "If you move parts off the edge of the game area scrollbars will appear.", -1);
+                int width, height;
+                layout.get_pixel_size(out width, out height);
+                ctx.save();
+                ctx.set_source_rgb(1, 1, 1);
+                ctx.translate((get_allocated_width() - width)/2, (get_allocated_height() - height)/2);
+                Pango.cairo_show_layout(ctx, layout);
+                ctx.restore();
+            }
+
             ctx.translate(-hScrollPos, -vScrollPos);
 
             if(p != null) {
                 if(image != null)
-                    p.render(ctx, image, anim == null);
+                    p.render(ctx, image[_zoom_level], anim == null);
                 if(_render_outline) {
                     ctx.set_source_rgb(1.0, 0.0, 0.0);
                     p.render_outlines(ctx);
@@ -316,7 +383,7 @@ namespace puzzle {
                 ctx.stroke();
             }
 
-            timer.stop();
+            //timer.stop();
             //stdout.printf("%g\n", timer.elapsed());
             return true;
         }
@@ -378,8 +445,9 @@ namespace puzzle {
         private void on_drag_update(Gtk.GestureDrag g, double x, double y) {
             if(dragParts != null) {
                 assert(dragParts.length == dragStart.length);
+                var offset = Vec2(x, y);
                 for(int idx=0 ; idx<dragParts.length ; idx++)
-                    dragParts[idx].pos = Vec2(x, y).add(dragStart[idx]);
+                    dragParts[idx].pos = offset.add(dragStart[idx]);
                 queue_draw();
             } else {
                 selection = Extend.points(selectionStart, selectionStart.add(Vec2(x, y)));
