@@ -195,6 +195,17 @@ namespace puzzle {
             return Extend.point_and_size(pos, Vec2(width, height));
         }
 
+        public bool is_edge() {
+            var s = corners[corners.length - 1];
+            foreach(var c in corners) {
+                var edge = grid.getEdge(s, c);
+                if(edge.pin <= 0)
+                    return true;
+                s = c;
+            }
+            return false;
+        }
+
         public bool canMerge(Part other) {
             return canMergeAxis(this.pos.x, this.width,  other.pos.x, other.width) &&
                    canMergeAxis(this.pos.y, this.height, other.pos.y, other.height);

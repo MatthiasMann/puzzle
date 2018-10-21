@@ -1,0 +1,32 @@
+<schemalist>
+  <enum id="de.matthiasmann.Puzzle.Randomize">
+    <value nick="NONE" value="0"/>
+    <value nick="MESSY" value="1"/>
+    <value nick="GRID" value="2"/>
+    <value nick="GRID_EDGES_FIRST" value="3"/>
+  </enum>
+  <schema id="de.matthiasmann.Puzzle" path="/de/matthiasmann/Puzzle/" gettext-domain="puzzle">
+    <key name="min-tile-size" type="u">
+      <default>50</default>
+      <summary>Minimum tile size</summary>
+      <description>
+        The smallest size a puzzle tile will be (before grid randomization) in ecah axis
+      </description>
+    </key>
+    <key name="max-num-tiles" type="u">
+      <default>200</default>
+      <summary>Maximum number of tiles per image</summary>
+      <description>
+        The maximum number of tiles per image - this is a soft limit
+      </description>
+    </key>
+
+    <key name="randomize" enum="de.matthiasmann.Puzzle.Randomize">
+      <default>'GRID'</default>
+      <summary>How puzzle tiles are initially placed</summary>
+      <description>
+        'NONE' will make the puzzle *very* easy to solve.
+      </description>
+    </key>
+  </schema>
+</schemalist>

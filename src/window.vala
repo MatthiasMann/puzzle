@@ -15,11 +15,19 @@ namespace puzzle {
 
     public class Window : Gtk.ApplicationWindow {
         private PuzzleArea pa;
+        private Settings settings;
+        private Puzzle.Parameters parameters;
       
         public Window(Gtk.Application app) {
-            Object (application: app);
+            Object(application: app);
 
             set_default_size(1024, 768);
+
+            settings = new Settings("de.matthiasmann.Puzzle");
+            parameters = Puzzle.Parameters();
+            parameters.randomize = (Puzzle.Randomize)settings.get_enum("randomize");
+            parameters.min_tile_size = settings.get_uint("min-tile-size");
+            parameters.max_num_tiles = settings.get_uint("max-num-tiles");
 
             var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
             add(box);
@@ -43,7 +51,7 @@ namespace puzzle {
             //recent_menu.add_filter(filter);
             recent_menu.item_activated.connect(() => {
                 var info = recent_menu.get_current_item ();
-                createPuzzle(info.get_uri());
+                createPuzzle(info.get_uri(), parameters);
             });
             var item_open_recent = new Gtk.MenuItem.with_label("Open Recent");
             filemenu.add(item_open_recent);
@@ -136,7 +144,7 @@ namespace puzzle {
             return loader.close();
         }
 
-        private void createPuzzle(string uri) {
+        private void createPuzzle(string uri, Puzzle.Parameters parameters) {
             try {
                 var file = File.new_for_uri(uri);
                 var loader = new Gdk.PixbufLoader();
@@ -146,18 +154,19 @@ namespace puzzle {
                 if(!pixbuf_loader_loop(loader, file))
                     return;
                 var anim = loader.get_animation();
-                if(anim.is_static_image()) {
-                    var pixbuf = loader.get_pixbuf();
-                    var tile_size = uint.max(50, uint.min(pixbuf.width, pixbuf.height) / 14);
-                    pa.createPuzzleFromPixbuf(pixbuf, UVec2(pixbuf.width / tile_size, pixbuf.height / tile_size));
-                } else {
-                    var tile_size = 50;//uint.max(1, uint.min(anim.get_width(), anim.get_height()) / 12);
-                    pa.createPuzzleFromAnim(anim, UVec2(anim.get_width() / tile_size, anim.get_height() / tile_size));
-                }
+                if(anim.is_static_image())
+                    pa.createPuzzleFromPixbuf(loader.get_pixbuf(), parameters);
+                else
+                    pa.createPuzzleFromAnim(anim, parameters);
 
                 var ret = Gtk.RecentManager.get_default().add_item(uri);
                 if(!ret)
                     stderr.printf("Failed to add item to recent manager");
+
+                this.parameters = parameters;
+                settings.set_enum("randomize", parameters.randomize);
+                settings.set_uint("min-tile-size", parameters.min_tile_size);
+                settings.set_uint("max-num-tiles", parameters.max_num_tiles);
             } catch(GLib.Error e) {
                 message("Error loading image file: %s", e.message);
             }
@@ -212,6 +221,89 @@ namespace puzzle {
             }
         }
 
+        class ParametersBox : Gtk.Box {
+            private Puzzle.Parameters _parameters;
+            private Gtk.ComboBoxText randomize_cb;
+            private Gtk.SpinButton min_tile_size_spinbtn;
+            private Gtk.SpinButton max_num_tiles_spinbtn;
+
+            public Puzzle.Parameters parameters {
+                get { return _parameters; }
+            }
+
+            private struct RandomizeCBEntries {
+                Puzzle.Randomize val;
+                string           str;
+
+                RandomizeCBEntries(Puzzle.Randomize _val, string _str) {
+                    this.val = _val;
+                    this.str = _str;
+                }
+            }
+            private RandomizeCBEntries[] randomize_entries;
+
+            public ParametersBox(Puzzle.Parameters __parameters) {
+                orientation = Gtk.Orientation.HORIZONTAL;
+                spacing = 5;
+                this._parameters = __parameters;
+
+                randomize_entries = {
+                    RandomizeCBEntries(Puzzle.Randomize.NONE, "None"),
+                    RandomizeCBEntries(Puzzle.Randomize.MESSY, "Messy"),
+                    RandomizeCBEntries(Puzzle.Randomize.GRID, "Grid"),
+                    RandomizeCBEntries(Puzzle.Randomize.GRID_EDGES_FIRST, "Grid, edges first")
+                };
+
+                var eboxv = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+                randomize_cb = new Gtk.ComboBoxText();
+                for(int idx=0 ; idx<randomize_entries.length ; idx++) {
+                    randomize_cb.append_text(randomize_entries[idx].str);
+                    if(parameters.randomize == randomize_entries[idx].val)
+                        randomize_cb.active = idx;
+                }
+                randomize_cb.changed.connect(randomize_cb_changed);
+                eboxv.add(new Gtk.Label("Randomization"));
+                eboxv.add(randomize_cb);
+                add(eboxv);
+
+                eboxv = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+                min_tile_size_spinbtn = new Gtk.SpinButton.with_range(10.0, 1000.0, 10.0);
+                min_tile_size_spinbtn.value = parameters.min_tile_size;
+                min_tile_size_spinbtn.digits = 0;
+                min_tile_size_spinbtn.width_chars = 4;
+                min_tile_size_spinbtn.max_width_chars = 4;
+                min_tile_size_spinbtn.value_changed.connect(min_tile_size_spinbtn_value_changed);
+                eboxv.add(new Gtk.Label("Min tile size"));
+                eboxv.add(min_tile_size_spinbtn);
+                add(eboxv);
+
+                eboxv = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+                max_num_tiles_spinbtn = new Gtk.SpinButton.with_range(10.0, 2000.0, 10.0);
+                max_num_tiles_spinbtn.value = parameters.max_num_tiles;
+                max_num_tiles_spinbtn.digits = 0;
+                max_num_tiles_spinbtn.width_chars = 4;
+                max_num_tiles_spinbtn.max_width_chars = 4;
+                max_num_tiles_spinbtn.value_changed.connect(max_num_tiles_spinbtn_value_changed);
+                eboxv.add(new Gtk.Label("Maximum number of tiles"));
+                eboxv.add(max_num_tiles_spinbtn);
+                add(eboxv);
+            }
+
+            private void randomize_cb_changed() {
+                var idx = randomize_cb.active;
+                if(idx >= 0 && idx < randomize_entries.length)
+                    _parameters.randomize = randomize_entries[idx].val;
+            }
+
+            private void min_tile_size_spinbtn_value_changed() {
+                _parameters.min_tile_size = min_tile_size_spinbtn.get_value_as_int();
+            }
+
+            private void max_num_tiles_spinbtn_value_changed() {
+                _parameters.max_num_tiles = max_num_tiles_spinbtn.get_value_as_int();
+            }
+        }
+
         class FileOpenDialog : Gtk.FileChooserDialog {
             private Gtk.Label img_size;
             private Gtk.Image preview;
@@ -220,10 +312,14 @@ namespace puzzle {
             private AsyncQueue<AsyncPreviewJob> queue;
             private Thread<bool> thread;
             private int job_id;
+            private ParametersBox pbox;
+            public Puzzle.Parameters parameters {
+                get { return pbox.parameters; }
+            }
 
             private const int thumbnail_size = 128;
 
-            public FileOpenDialog(Gtk.Window? parent) {
+            public FileOpenDialog(Gtk.Window? parent, Puzzle.Parameters _parameters) {
                 this.title = "Select an image or animation to saw up";
                 this.action = Gtk.FileChooserAction.OPEN;
 
@@ -256,6 +352,10 @@ namespace puzzle {
                 set_create_folders(false);
                 set_use_preview_label(false);
                 set_preview_widget(box);
+
+                pbox = new ParametersBox(_parameters);
+                pbox.show_all();
+                set_extra_widget(pbox);
 
                 queue = new AsyncQueue<AsyncPreviewJob>();
                 try {
@@ -331,9 +431,9 @@ namespace puzzle {
         }
 
         private void do_file_open() {
-            var chooser = new FileOpenDialog(this);
+            var chooser = new FileOpenDialog(this, parameters);
             if(chooser.run() == Gtk.ResponseType.ACCEPT) {
-                createPuzzle(chooser.get_uri());
+                createPuzzle(chooser.get_uri(), chooser.parameters);
             }
             chooser.close();
         }

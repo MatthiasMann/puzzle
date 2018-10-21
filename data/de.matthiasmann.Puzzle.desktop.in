@@ -3,5 +3,5 @@ Name=puzzle
 Exec=puzzle
 Terminal=false
 Type=Application
-Categories=GTK;
+Categories=Games;
 StartupNotify=true

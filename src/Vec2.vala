@@ -45,6 +45,12 @@ namespace puzzle {
         }
     }
 
+    public static uint div_roundup(uint num, uint denom)
+        requires(denom > 0)
+    {
+        return (uint)(((ulong)num + denom - 1) / denom);
+    }
+
     public struct UVec2 {
         public uint x;
         public uint y;
@@ -57,6 +63,12 @@ namespace puzzle {
         public UVec2.uvec2(UVec2 other) {
             this.x = other.x;
             this.y = other.y;
+        }
+
+        public UVec2 div_roundup(uint other)
+            requires(other > 0)
+        {
+            return UVec2(puzzle.div_roundup(x, other), puzzle.div_roundup(y, other));
         }
     }
 

@@ -1,6 +1,6 @@
 desktop_file = i18n.merge_file(
-  input: 'org.gnome.Puzzle.desktop.in',
-  output: 'org.gnome.Puzzle.desktop',
+  input: 'de.matthiasmann.Puzzle.desktop.in',
+  output: 'de.matthiasmann.Puzzle.desktop',
   type: 'desktop',
   po_dir: '../po',
   install: true,
@@ -15,8 +15,8 @@ if desktop_utils.found()
 endif
 
 appstream_file = i18n.merge_file(
-  input: 'org.gnome.Puzzle.appdata.xml.in',
-  output: 'org.gnome.Puzzle.appdata.xml',
+  input: 'de.matthiasmann.Puzzle.appdata.xml.in',
+  output: 'de.matthiasmann.Puzzle.appdata.xml',
   po_dir: '../po',
   install: true,
   install_dir: join_paths(get_option('datadir'), 'appdata')
@@ -29,7 +29,7 @@ if appstream_util.found()
   )
 endif
 
-install_data('org.gnome.Puzzle.gschema.xml',
+install_data('de.matthiasmann.Puzzle.gschema.xml',
   install_dir: join_paths(get_option('datadir'), 'glib-2.0/schemas')
 )
 

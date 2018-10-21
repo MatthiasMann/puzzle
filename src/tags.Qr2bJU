@@ -1,0 +1,6 @@
+avg2	scale_half.c	/^inline static uint32_t avg2(uint32_t a, uint32_t b)$/;"	f	typeref:typename:uint32_t	file:
+avg4	scale_half.c	/^inline static uint32_t avg4(const uint32_t* __restrict__ a, const uint32_t* __restrict__ b)$/;"	f	typeref:typename:uint32_t	file:
+scale_half_sse_argb32	scale_half.c	/^static void scale_half_sse_argb32(unsigned char* __restrict__ dst, size_t dst_stride, unsigned c/;"	f	typeref:typename:void	file:
+aligned_surface_key	scale_half.c	/^static cairo_user_data_key_t aligned_surface_key;$/;"	v	typeref:typename:cairo_user_data_key_t	file:
+create_surface_aligned	scale_half.c	/^static cairo_surface_t* create_surface_aligned(cairo_format_t format, int width, int height)$/;"	f	typeref:typename:cairo_surface_t *	file:
+puzzle_puzzle_area_scale_half	scale_half.c	/^cairo_surface_t* puzzle_puzzle_area_scale_half (cairo_surface_t* surface)$/;"	f	typeref:typename:cairo_surface_t *

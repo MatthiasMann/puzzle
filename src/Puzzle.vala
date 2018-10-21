@@ -76,24 +76,94 @@ namespace puzzle {
             get { return parts.length; }
         }
 
-        public Puzzle(UVec2 img_size, UVec2 num_tiles, bool randomize = true) {
+        public enum Randomize {
+            NONE,
+            MESSY,
+            GRID,
+            GRID_EDGES_FIRST
+        }
+
+        public struct Parameters {
+            Randomize randomize;
+            uint min_tile_size;
+            uint max_num_tiles;
+
+            public Parameters() {
+                randomize = Randomize.GRID;
+                min_tile_size = 50;
+                max_num_tiles = 200;
+            }
+
+            public uint compute_tile_size(UVec2 img_size) {
+                var avg_tile_size = Math.sqrt(((double)img_size.x * (double)img_size.y) / (double)max_num_tiles);
+                return uint.max(min_tile_size, (uint)avg_tile_size);
+            }
+        }
+
+        public Puzzle(UVec2 img_size, Parameters parameters) {
+            var num_tiles = img_size.div_roundup(parameters.compute_tile_size(img_size));
             this.img_size = img_size;
             this.grid = new Grid(img_size, num_tiles);
             this.parts = {};
             
             var stride = grid.stride;
             for(uint y=0 ; y<num_tiles.y ; y++) {
-                for(uint x=0,idx=y*stride ; x<num_tiles.x ; x++,idx++) {
-                    var p = new Part(grid, {idx, idx+1, idx+stride+1, idx+stride});
-                    if(randomize) {
+                for(uint x=0,idx=y*stride ; x<num_tiles.x ; x++,idx++)
+                    parts += new Part(grid, {idx, idx+1, idx+stride+1, idx+stride});
+            }
+
+            switch(parameters.randomize) {
+                case NONE:
+                    break;
+                case MESSY:
+                    foreach(unowned Part p in parts) {
                         p.pos.x = Random.next_double() * (img_size.x - p.width);
                         p.pos.y = Random.next_double() * (img_size.y - p.height);
                     }
-                    parts += p;
+                    break;
+                case GRID: {
+                    var rand = UniqueRandom(0, parts.length);
+                    var tile_size = Vec2(img_size.x / (double)num_tiles.x, img_size.y / (double)num_tiles.y);
+                    foreach(unowned Part p in parts) {
+                        var r = rand.next();
+                        p.pos = tile_size.mul2(r % stride, r / stride);
+                    }
+                    break;
+                }
+                case GRID_EDGES_FIRST: {
+                    var num_edges = (int)(num_tiles.x*2 + num_tiles.y*2) - 4;  // -4 because corners are both x/y edges
+                    var tile_size = Vec2(img_size.x / (double)num_tiles.x, img_size.y / (double)num_tiles.y);
+                    var rand_edge = UniqueRandom(0, num_edges);
+                    var rand_rest = UniqueRandom(num_edges, parts.length);
+                    foreach(unowned Part p in parts) {
+                        var r = p.is_edge() ? rand_edge.next() : rand_rest.next();
+                        p.pos = tile_size.mul2(r % stride, r / stride);
+                    }
+                    break;
                 }
             }
         }
         
+        private struct UniqueRandom {
+            int[] list;
+
+            public UniqueRandom(int from, int to)
+                requires(to > from)
+            {
+                list = new int[to-from];
+                for(int idx=0 ; idx<list.length ; idx++)
+                    list[idx] = from + idx;
+            }
+
+            public int next() {
+                assert(list.length > 0);
+                var idx = Random.int_range(0, list.length);
+                var ret = list[idx];
+                list[idx] = list[--list.length];
+                return ret;
+            }
+        }
+
         public double scale {
             get { return grid.scale; }
             set {
@@ -279,31 +349,31 @@ namespace puzzle {
             Gtk.BindingEntry.add_signal(binding_set, Gdk.Key.KP_Subtract, 0, "zoom", 1, typeof(int), 1);
         }
 
-        public void createPuzzleFromPixbuf(Gdk.Pixbuf pixbuf, UVec2 num_tiles) {
+        public void createPuzzleFromPixbuf(Gdk.Pixbuf pixbuf, Puzzle.Parameters parameters) {
             this.anim = null;
             this.anim_iter = null;
             this.image = new Cairo.Surface[1];
             update_image_from_pixbuf(pixbuf, true);
-            doCreatePuzzle(pixbuf.width, pixbuf.height, num_tiles);
+            doCreatePuzzle(pixbuf.width, pixbuf.height, parameters);
         }
 
-        public void createPuzzleFromAnim(Gdk.PixbufAnimation anim, UVec2 num_tiles) {
+        public void createPuzzleFromAnim(Gdk.PixbufAnimation anim, Puzzle.Parameters parameters) {
             this.anim = anim;
             this.anim_iter = anim.get_iter(null);
             this.image = new Cairo.Surface[1];
             update_image_from_pixbuf(anim_iter.get_pixbuf(), true);
             animate();
-            doCreatePuzzle(anim.get_width(), anim.get_height(), num_tiles);
+            doCreatePuzzle(anim.get_width(), anim.get_height(), parameters);
         }
 
-        private void doCreatePuzzle(int width, int height, UVec2 num_tiles)
+        private void doCreatePuzzle(int width, int height, Puzzle.Parameters parameters)
             requires(width > 0)
             requires(height > 0)
         {
             dragParts = null;
             selectedParts = null;
             _zoom_level = 0;
-            p = new Puzzle(UVec2((uint)width, (uint)height), num_tiles);
+            p = new Puzzle(UVec2((uint)width, (uint)height), parameters);
             set_size_request(width+20, height+20);
             update_scrollable_area();
         }
