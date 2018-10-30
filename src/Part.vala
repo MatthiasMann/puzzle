@@ -332,6 +332,16 @@ namespace puzzle {
 
         private static uint[] cleanup_corners(owned uint[] corners) {
             int len = corners.length;
+            for(int idx=1 ; idx<len ; idx++) {
+                if(corners[idx] != corners[len-idx]) {
+                    if(idx == 1)
+                        break;
+                    --idx;
+                    stdout.printf("Removing %d warp around indices: ", idx);
+                    dump_corner_ids(corners);
+                    return cleanup_corners(corners[idx:len-idx]);
+                }
+            }
             for(int idx=0 ; idx<len ; idx++) {
                 while(corners[idx] == corners[(idx+2)%len]) {
                     var idx2 = (idx+2)%len;
