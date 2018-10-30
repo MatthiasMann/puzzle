@@ -577,6 +577,7 @@ namespace puzzle {
                 hadjust.page_size = get_allocated_width();
                 hadjust.step_increment = hadjust.page_size * 0.1;
                 hadjust.page_increment = hadjust.page_size * 0.8;
+                clamp_adjustment_value(hadjust);
             }
 
             if(vadjust != null) {
@@ -585,13 +586,19 @@ namespace puzzle {
                 vadjust.page_size = get_allocated_height();
                 vadjust.step_increment = hadjust.page_size * 0.1;
                 vadjust.page_increment = hadjust.page_size * 0.8;
+                clamp_adjustment_value(vadjust);
             }
         }
 
-        private double compute_lower(double cur_val, double new_val, bool allow_shrinking) {
+        private static double compute_lower(double cur_val, double new_val, bool allow_shrinking) {
             if(allow_shrinking || new_val < cur_val)
                 return new_val;
             return cur_val;
+        }
+
+        private static void clamp_adjustment_value(Gtk.Adjustment adj) {
+            if(adj.value < adj.lower)
+                adj.value = adj.lower;
         }
     }
 }
