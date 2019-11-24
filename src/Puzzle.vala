@@ -313,6 +313,7 @@ namespace puzzle {
             }
             get { return _zoom_level; }
         }
+        private Vec2 scroll_offset = Vec2(0,0);
 
         public PreparePreview preparePreview;
 
@@ -465,13 +466,13 @@ namespace puzzle {
         }
 
         public double hScrollPos {
-            set { if(hadjust != null) hadjust.value = value; }
-            get { return (hadjust != null) ? Math.round(hadjust.value) : 0; }
+            //set { if(hadjust != null) hadjust.value = value - scroll_offset.x; }
+            get { return (hadjust != null) ? Math.round(hadjust.value + scroll_offset.x) : 0; }
         }
 
         public double vScrollPos {
-            set { if(vadjust != null) vadjust.value = value; }
-            get { return (vadjust != null) ? Math.round(vadjust.value) : 0; }
+            //set { if(vadjust != null) vadjust.value = value - scroll_offset.y; }
+            get { return (vadjust != null) ? Math.round(vadjust.value + scroll_offset.y) : 0; }
         }
 
         private Part[] dragParts;
@@ -577,7 +578,7 @@ namespace puzzle {
                 hadjust.page_size = get_allocated_width();
                 hadjust.step_increment = hadjust.page_size * 0.1;
                 hadjust.page_increment = hadjust.page_size * 0.8;
-                clamp_adjustment_value(hadjust);
+                scroll_offset.x = clamp_adjustment_value(hadjust);
             }
 
             if(vadjust != null) {
@@ -586,7 +587,7 @@ namespace puzzle {
                 vadjust.page_size = get_allocated_height();
                 vadjust.step_increment = hadjust.page_size * 0.1;
                 vadjust.page_increment = hadjust.page_size * 0.8;
-                clamp_adjustment_value(vadjust);
+                scroll_offset.y = clamp_adjustment_value(vadjust);
             }
         }
 
@@ -596,9 +597,17 @@ namespace puzzle {
             return cur_val;
         }
 
-        private static void clamp_adjustment_value(Gtk.Adjustment adj) {
-            if(adj.value < adj.lower)
-                adj.value = adj.lower;
+        private static double clamp_adjustment_value(Gtk.Adjustment adj) {
+            var lower = adj.lower;
+            if(adj.value < lower)
+                adj.value = lower;
+            if(lower < 0) {
+                adj.upper -= lower;
+                adj.value -= lower;
+                adj.lower = 0;
+                return lower;
+            } else
+                return 0;
         }
     }
 }

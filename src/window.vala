@@ -163,6 +163,9 @@ namespace puzzle {
                 if(!ret)
                     stderr.printf("Failed to add item to recent manager");
 
+                var filename_start_idx = uri.last_index_of_char('/') + 1;
+                set_title("puzzle " + uri.substring(filename_start_idx));
+
                 this.parameters = parameters;
                 settings.set_enum("randomize", parameters.randomize);
                 settings.set_uint("min-tile-size", parameters.min_tile_size);
