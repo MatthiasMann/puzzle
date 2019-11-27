@@ -433,6 +433,13 @@ namespace puzzle {
 
             ctx.translate(-hScrollPos, -vScrollPos);
 
+            ctx.set_source_rgb(0.15, 0.15, 0.75);
+            ctx.move_to(-100, 0);
+            ctx.line_to(100, 0);
+            ctx.move_to(0, -100);
+            ctx.line_to(0, 100);
+            ctx.stroke();
+
             if(p != null) {
                 if(image != null)
                     p.render(ctx, image[_zoom_level], anim == null);
@@ -528,8 +535,9 @@ namespace puzzle {
         }
 
         private void on_drag_end(Gtk.GestureDrag g, double x, double y) {
-            if(p != null && dragParts != null && dragParts.length == 1) {   // only merge a single piece
-                if(p.checkMerge(dragParts[0]) > 0)
+            if(p != null && dragParts != null) {
+                // only merge a single piece
+                if(dragParts.length == 1 && p.checkMerge(dragParts[0]) > 0)
                     queue_draw();
                 update_scrollable_area(false);
             }
@@ -572,23 +580,11 @@ namespace puzzle {
 
         private void update_scrollable_area(bool allow_shrinking = true) {
             var e = (p != null) ? p.get_extend() : Extend.zero();
-            if(hadjust != null) {
-                hadjust.lower = compute_lower(hadjust.value, e.min.x - 10.0, allow_shrinking);
-                hadjust.upper = e.max.x + 10.0;
-                hadjust.page_size = get_allocated_width();
-                hadjust.step_increment = hadjust.page_size * 0.1;
-                hadjust.page_increment = hadjust.page_size * 0.8;
-                scroll_offset.x = clamp_adjustment_value(hadjust, scroll_offset.x);
-            }
+            if(hadjust != null)
+                scroll_offset.x = configure_adjustment(hadjust, get_allocated_width(), e.min.x, e.max.x, scroll_offset.x, allow_shrinking);
 
-            if(vadjust != null) {
-                vadjust.lower = compute_lower(vadjust.value, e.min.y - 10.0, allow_shrinking);
-                vadjust.upper = e.max.y + 10.0;
-                vadjust.page_size = get_allocated_height();
-                vadjust.step_increment = hadjust.page_size * 0.1;
-                vadjust.page_increment = hadjust.page_size * 0.8;
-                scroll_offset.y = clamp_adjustment_value(vadjust, scroll_offset.y);
-            }
+            if(vadjust != null)
+                scroll_offset.y = configure_adjustment(vadjust, get_allocated_height(), e.min.y, e.max.y, scroll_offset.y, allow_shrinking);
         }
 
         private static double compute_lower(double cur_val, double new_val, bool allow_shrinking) {
@@ -597,17 +593,13 @@ namespace puzzle {
             return cur_val;
         }
 
-        private static double clamp_adjustment_value(Gtk.Adjustment adj, double cur_offset) {
-            var lower = adj.lower;
-            if(adj.value < lower)
-                adj.value = lower;
-            if(lower < 0) {
-                adj.upper -= lower;
-                adj.value -= lower - cur_offset;
-                adj.lower = 0;
-                return lower;
-            } else
-                return 0;
+        private double configure_adjustment(Gtk.Adjustment adj, double page_size, double min, double max, double cur_offset, bool allow_shrinking) {
+            var new_offset = compute_lower(cur_offset, min - 10.0, allow_shrinking);
+            var new_value = adj.value + cur_offset - new_offset;
+            adj.configure(new_value, 0, double.max(0, max) + 10.0 - new_offset, page_size * 0.1, page_size * 0.8, page_size);
+            if(cur_offset != new_offset)
+                queue_draw();
+            return new_offset;
         }
     }
 }
