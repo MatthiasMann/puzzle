@@ -433,10 +433,14 @@ namespace puzzle {
             }
         }
 
+        private string last_loaded_uri = null;
         private void do_file_open() {
             var chooser = new FileOpenDialog(this, parameters);
+            if(last_loaded_uri != null)
+                chooser.set_uri(last_loaded_uri);
             if(chooser.run() == Gtk.ResponseType.ACCEPT) {
                 createPuzzle(chooser.get_uri(), chooser.parameters);
+                last_loaded_uri = chooser.get_uri();
             }
             chooser.close();
         }
