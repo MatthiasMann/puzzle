@@ -144,6 +144,47 @@ namespace puzzle {
             return loader.close();
         }
 
+        private static extern uint64 compare_rows(Gdk.Pixbuf pixbuf, uint row0, uint row1);
+        private static extern uint64 compare_columns(Gdk.Pixbuf pixbuf, uint col0, uint col1, uint y0, uint y1);
+
+        private Gdk.Pixbuf auto_crop(Gdk.Pixbuf pixbuf) {
+            int width = pixbuf.width;
+            int height = pixbuf.height;
+            if(width < 4 || height < 4)
+                return pixbuf;
+            int midy = height/2;
+            int starty, endy;
+            uint64 threshold = ((uint64)(10 * 10)) * width;
+            for(starty=0 ; starty<midy ; starty++) {
+                uint64 res = compare_rows(pixbuf, 0, starty+1);
+                stdout.printf("starty=%u res=%llu\n", starty, res);
+                if(res > threshold)
+                    break;
+            }
+            for(endy=height ; endy>midy ; endy--) {
+                uint64 res = compare_rows(pixbuf, height-1, endy-2);
+                stdout.printf("endy=%u res=%llu\n", endy, res);
+                if(res > threshold)
+                    break;
+            }
+            threshold = ((uint64)(10 * 10)) * (endy - starty);
+            int midx = width/2;
+            int startx, endx;
+            for(startx=0 ; startx<midx ; startx++) {
+                uint64 res = compare_columns(pixbuf, 0, startx+1, starty, endy);
+                stdout.printf("startx=%u res=%llu\n", startx, res);
+                if(res > threshold)
+                    break;
+            }
+            for(endx=width ; endx>midx ; endx--) {
+                uint64 res = compare_columns(pixbuf, width-1, endx-2, starty, endy);
+                stdout.printf("endx=%u res=%llu\n", endx, res);
+                if(res > threshold)
+                    break;
+            }
+            return new Gdk.Pixbuf.subpixbuf(pixbuf, startx, starty, endx- startx, endy - starty);
+        }
+
         private void createPuzzle(string uri, Puzzle.Parameters parameters) {
             try {
                 var file = File.new_for_uri(uri);
@@ -155,7 +196,7 @@ namespace puzzle {
                     return;
                 var anim = loader.get_animation();
                 if(anim.is_static_image())
-                    pa.createPuzzleFromPixbuf(loader.get_pixbuf(), parameters);
+                    pa.createPuzzleFromPixbuf(auto_crop(loader.get_pixbuf()), parameters);
                 else
                     pa.createPuzzleFromAnim(anim, parameters);
 

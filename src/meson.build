@@ -4,7 +4,8 @@ puzzle_sources = [
   'Vec2.vala',
   'Part.vala',
   'Puzzle.vala',
-  'scale_half.c'
+  'scale_half.c',
+  'auto_crop.c'
 ]
 
 cc = meson.get_compiler('c')
