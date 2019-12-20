@@ -17,6 +17,7 @@ namespace puzzle {
         private PuzzleArea pa;
         private Settings settings;
         private Puzzle.Parameters parameters;
+        private Gtk.MenuItem item_open_random;
       
         public Window(Gtk.Application app) {
             Object(application: app);
@@ -32,6 +33,9 @@ namespace puzzle {
             var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
             add(box);
 
+            var accel_group = new Gtk.AccelGroup();
+            add_accel_group(accel_group);
+
             var bar = new Gtk.MenuBar();
             box.pack_start(bar, false, false, 0);
 
@@ -40,9 +44,21 @@ namespace puzzle {
             var filemenu = new Gtk.Menu();
             item_file.set_submenu(filemenu);
 
-            var item_open = new Gtk.MenuItem.with_label("Open");
+            var item_open = new Gtk.MenuItem.with_mnemonic("_Open");
+            item_open.set_use_underline(true);
+            item_open.add_accelerator("activate", accel_group, Gdk.Key.o, Gdk.CONTROL_MASK, Gtk.AccelFlags.VISIBLE);
             item_open.activate.connect(do_file_open);
             filemenu.add(item_open);
+
+            item_open_random = new Gtk.MenuItem.with_mnemonic("Open _Random");
+            item_open_random.set_sensitive(false);
+            item_open_random.set_use_underline(true);
+            item_open_random.add_accelerator("activate", accel_group, Gdk.Key.r, Gdk.CONTROL_MASK, Gtk.AccelFlags.VISIBLE);
+            item_open_random.activate.connect(() => {
+                if(last_opened_folder != null)
+                    createRandomPuzzle(last_opened_folder, parameters);
+            });
+            filemenu.add(item_open_random);
 
             var recent_menu = new Gtk.RecentChooserMenu();
             var filter = new Gtk.RecentFilter();
@@ -216,6 +232,67 @@ namespace puzzle {
             }
         }
 
+        private void createRandomPuzzle(string folder, Puzzle.Parameters parameters) {
+            string[] paths = {};
+            try {
+                var dir = Dir.open(folder, 0);
+                string? name;
+                while((name = dir.read_name()) != null) {
+                    if(name.has_suffix(".png") || name.has_suffix(".jpg") || name.has_suffix(".jpeg") || name.has_suffix(".bmp")) {
+                        string path = Path.build_filename(folder, name);
+                        if(FileUtils.test(path, FileTest.IS_REGULAR))
+                            paths += path;
+                    }
+                }
+            } catch(GLib.FileError e) {
+                message("Could not list files: %s", e.message);
+                return;
+            }
+            if(paths.length < 3)
+                return;
+            var buffer = new uint8[64 << 10];
+            for(int tries=3 ; tries-->0 ;) {
+                var idx = Random.int_range(0, paths.length);
+                var path = paths[idx];
+
+                try {
+                    var file = File.new_for_path(path);
+                    var loader = new Gdk.PixbufLoader();
+                    var stop = false;
+                    loader.size_prepared.connect((width,height) => {
+                        stdout.printf("width=%d height=%d\n", width, height);
+                        if(width < 300 || height < 300 || width > 4096 || height > 4096)
+                            stop = true;
+                    });
+                    var fis = file.read();
+                    var done = false;
+                    while(!stop) {
+                        var read = fis.read(buffer);
+                        if(read <= 0) {
+                            done = read == 0;
+                            break;
+                        }
+                        if(!loader.write(buffer[0:read]))
+                            break;
+                    }
+                    if(loader.close() && done && !stop) {
+                        pa.createPuzzleFromPixbuf(auto_crop(loader.get_pixbuf()), parameters);
+
+                        var filename_start_idx = path.last_index_of_char('/') + 1;
+                        set_title("puzzle " + path.substring(filename_start_idx));
+
+                        this.parameters = parameters;
+                        settings.set_enum("randomize", parameters.randomize);
+                        settings.set_uint("min-tile-size", parameters.min_tile_size);
+                        settings.set_uint("max-num-tiles", parameters.max_num_tiles);
+                        return;
+                    }
+                } catch(GLib.Error e) {
+                    message("Error loading image file: %s", e.message);
+                }
+            }
+        }
+
         public static PreviewResult loadPreview(string? uri, int thumbnail_size) {
             var result = PreviewResult();
             if(uri == null)
@@ -369,6 +446,7 @@ namespace puzzle {
 
                 add_button("_Cancel", Gtk.ResponseType.CANCEL);
                 add_button("_Open", Gtk.ResponseType.ACCEPT);
+                add_button("_Random", 1);
                 set_default_response(Gtk.ResponseType.ACCEPT);
 
                 if(parent != null)
@@ -474,16 +552,31 @@ namespace puzzle {
             }
         }
 
-        private string last_loaded_uri = null;
+        private string? last_loaded_uri = null;
+        private string? last_opened_folder = null;
         private void do_file_open() {
             var chooser = new FileOpenDialog(this, parameters);
             if(last_loaded_uri != null)
                 chooser.set_uri(last_loaded_uri);
-            if(chooser.run() == Gtk.ResponseType.ACCEPT) {
-                createPuzzle(chooser.get_uri(), chooser.parameters);
-                last_loaded_uri = chooser.get_uri();
+            else if(last_opened_folder != null)
+                chooser.set_current_folder(last_opened_folder);
+            switch(chooser.run()) {
+                case Gtk.ResponseType.ACCEPT:
+                    createPuzzle(chooser.get_uri(), chooser.parameters);
+                    last_loaded_uri = chooser.get_uri();
+                    last_opened_folder = chooser.get_current_folder();
+                    break;
+                case 1:
+                    last_opened_folder = chooser.get_current_folder();
+                    last_loaded_uri = null;
+                    createRandomPuzzle(last_opened_folder, chooser.parameters);
+                    break;
+                default:
+                    break;
             }
             chooser.close();
+            if(last_opened_folder != null)
+                item_open_random.set_sensitive(true);
         }
     }
 }
